@@ -2,6 +2,7 @@ from aimacode.planning import Action
 from aimacode.search import Problem
 from aimacode.utils import expr
 from lp_utils import decode_state
+import itertools
 
 
 class PgNode():
@@ -293,6 +294,17 @@ class PlanningGraph():
             if self.s_levels[level] == self.s_levels[level - 1]:
                 leveled = True
 
+    @staticmethod
+    def link_states(state, action):
+        """
+        Link the actions with the states.
+        
+        :param state: A state
+        :param action: The available actions in that state
+        """
+        action.parents.add(state)
+        state.children.add(action)
+
     def add_action_level(self, level):
         """ add an A (action) level to the Planning Graph
 
@@ -302,13 +314,30 @@ class PlanningGraph():
         :return:
             adds A nodes to the current level in self.a_levels[level]
         """
-        # TODO add action A level to the planning graph as described in the Russell-Norvig text
+        # add action A level to the planning graph as described in the Russell-Norvig text
         # 1. determine what actions to add and create those PgNode_a objects
         # 2. connect the nodes to the previous S literal level
         # for example, the A0 level will iterate through all possible actions for the problem and add a PgNode_a to a_levels[0]
         #   set iff all prerequisite literals for the action hold in S0.  This can be accomplished by testing
         #   to see if a proposed PgNode_a has prenodes that are a subset of the previous S level.  Once an
         #   action node is added, it MUST be connected to the S node instances in the appropriate s_level set.
+
+        actions = []
+
+        # Iterate through all actions looking for actions whose preconditions are satisfied at level "level".
+        for action in self.all_actions:
+
+            action = PgNode_a(action)
+            if action.prenodes.issubset(self.s_levels[level]):
+                actions.append(action)
+
+
+                for state in self.s_levels[level]:
+                    # if state in action.prenodes:
+                    self.link_states(state, action)
+
+        self.a_levels.append(actions)
+
 
     def add_literal_level(self, level):
         """ add an S (literal) level to the Planning Graph
@@ -319,7 +348,7 @@ class PlanningGraph():
         :return:
             adds S nodes to the current level in self.s_levels[level]
         """
-        # TODO add literal S level to the planning graph as described in the Russell-Norvig text
+        # add literal S level to the planning graph as described in the Russell-Norvig text
         # 1. determine what literals to add
         # 2. connect the nodes
         # for example, every A node in the previous level has a list of S nodes in effnodes that represent the effect
@@ -327,6 +356,19 @@ class PlanningGraph():
         #   may be "added" to the set without fear of duplication.  However, it is important to then correctly create and connect
         #   all of the new S nodes as children of all the A nodes that could produce them, and likewise add the A nodes to the
         #   parent sets of the S nodes
+
+        literals = set()
+
+        # Iterate through the the actions of the previous level and add their effects to the state at level "level".
+        for action in self.a_levels[level - 1]:
+            for state in action.effnodes:
+                literals.add(state)
+
+                # Link the state with the action that have produced such effect
+                self.link_states(state, action)
+
+        self.s_levels.append(literals)
+
 
     def update_a_mutex(self, nodeset):
         """ Determine and update sibling mutual exclusion for A-level nodes
@@ -385,12 +427,9 @@ class PlanningGraph():
         :return: bool
         """
 
-        # TODO Add commentary
+        # Check if there are effects that are inconsistent (the same effect appears positive and negative)
         return self.element_in(node_a1.action.effect_add, node_a2.action.effect_rem) \
             or self.element_in(node_a2.action.effect_add, node_a1.action.effect_rem)
-
-
-
 
     def interference_mutex(self, node_a1: PgNode_a, node_a2: PgNode_a) -> bool:
         """
@@ -407,11 +446,14 @@ class PlanningGraph():
         :return: bool
         """
 
-        # TODO Add commentary
-        return self.element_in(node_a1.action.effect_add, node_a2.action.precond_neg) \
-            or self.element_in(node_a2.action.effect_add, node_a1.action.precond_neg) \
-            or self.element_in(node_a1.action.effect_rem, node_a2.action.precond_pos) \
-            or self.element_in(node_a2.action.effect_rem, node_a1.action.precond_pos)
+        # As we have to compute the interferences in both ways, we encapsulate the comparisons in a function
+        # to avoid code duplication
+        def check_interferences(node1, node2):
+            return self.element_in(node1.action.effect_add, node2.action.precond_neg) \
+                   or self.element_in(node1.action.effect_rem, node2.action.precond_pos)
+
+        return check_interferences(node_a1, node_a2) or check_interferences(node_a2, node_a1)
+
 
     def competing_needs_mutex(self, node_a1: PgNode_a, node_a2: PgNode_a) -> bool:
         """
@@ -424,11 +466,10 @@ class PlanningGraph():
         :return: bool
         """
 
-        # TODO Add commentary
-        for p1 in node_a1.parents:
-            for p2 in node_a2.parents:
-                if p1.is_mutex(p2):
-                    return True
+        # Check if there are two preconditions that are mutex with each other.
+        for p1, p2 in itertools.product(node_a1.parents, node_a2.parents):
+            if p1.is_mutex(p2):
+                return True
         return False
 
     def update_s_mutex(self, nodeset: set):
@@ -463,7 +504,7 @@ class PlanningGraph():
         :param node_s2: PgNode_s
         :return: bool
         """
-        # TODO add commentary
+
         return node_s1.symbol == node_s2.symbol and node_s1.is_pos != node_s2.is_pos
 
     def inconsistent_support_mutex(self, node_s1: PgNode_s, node_s2: PgNode_s):
@@ -482,13 +523,14 @@ class PlanningGraph():
         :param node_s2: PgNode_s
         :return: bool
         """
-        # TODO add commentary
 
-        for p1 in node_s1.parents:
-            for p2 in node_s2.parents:
-                if not p1.is_mutex(p2):
-                    return False
-            return True
+        # Check every two pair of literals for mutually exclusivity, ie, check if one of the pairs belonging
+        # to the cartesian product of node_s1 with node_s2 is mutually exclusive.
+
+        for p1, p2 in itertools.product(node_s1.parents, node_s2.parents):
+            if not p1.is_mutex(p2):
+                return False
+        return True
 
     def h_levelsum(self) -> int:
         """The sum of the level costs of the individual goals (admissible if goals independent)
@@ -496,11 +538,34 @@ class PlanningGraph():
         :return: int
         """
         level_sum = 0
-        # TODO implement
-        return level_sum
+
+        # Since we are going to perform a lot of lookups we use a set to store the goals
+        goals = {goal for goal in self.problem.goal}
+
+        for level_depth, states in enumerate(self.s_levels):
+            for state in states:
+                if state.is_pos and state.symbol in goals:
+                    # If the current state is actually a goal, increase level_sum by level_depth and remove the goal
+                    # from the goal set. Since the search is performed from level to level starting by 0, the depth
+                    # is going to be minimum.
+                    level_sum += level_depth
+                    goals.remove(state.symbol)
+
+                    if not goals:
+                        return level_sum
+
+        return 0
+
 
     @staticmethod
     def element_in(elements_to_check, target_elements):
+        """
+        Check if one of the elements  of elements_to_check is inside of target_elements.
+        
+        :param elements_to_check: Elements to check
+        :param target_elements: Array of elements.
+        :return: True if one of the elements of elements_to_check is in target_elements, false otherwise.
+        """
         for element in elements_to_check:
             if element in target_elements:
                 return True

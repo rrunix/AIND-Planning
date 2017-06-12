@@ -49,7 +49,6 @@ class AirCargoProblem(Problem):
             list of Action objects
         """
 
-        # TODO create concrete Action objects based on the domain action schema for: Load, Unload, and Fly
         # concrete actions definition: specific literal action that does not include variables as with the schema
         # for example, the action schema 'Load(c, p, a)' can represent the concrete actions 'Load(C1, P1, SFO)'
         # or 'Load(C2, P2, JFK)'.  The actions for the planning problem must be concrete because the problems in
@@ -61,7 +60,6 @@ class AirCargoProblem(Problem):
             :return: list of Action objects
             """
             loads = []
-            # TODO add commentaries
             for c, p, a in itertools.product(self.cargos, self.planes, self.airports):
                 precond_pos = [expr("At({}, {})".format(p, a)),
                                expr("At({}, {})".format(c, a))]
@@ -81,7 +79,6 @@ class AirCargoProblem(Problem):
             :return: list of Action objects
             """
             unloads = []
-            # TODO add commentaries
             for c, p, a in itertools.product(self.cargos, self.planes, self.airports):
                 precond_pos = [expr("At({}, {})".format(p, a)),
                                expr("In({}, {})".format(c, p))]
@@ -127,7 +124,6 @@ class AirCargoProblem(Problem):
         :return: list of Action objects
         """
 
-        # Todo add commentaries
         # Taken from example_have_cake.py
 
         possible_actions = []
@@ -155,7 +151,6 @@ class AirCargoProblem(Problem):
         :return: resulting state after action
         """
 
-        # Todo add commentaries
         # Taken from example_have_cake.py
 
         new_state = FluentState([], [])
@@ -213,12 +208,11 @@ class AirCargoProblem(Problem):
         """
         # (see Russell-Norvig Ed-3 10.2.3  or Russell-Norvig Ed-2 11.2)
 
-        # TODO add commentaries
-        kb = PropKB()
+        # Create a kb only with positive clauses
         fluent = decode_state(node.state, self.state_map)
-        kb.tell(fluent.pos_sentence())
+        kb = PropKB(fluent.pos_sentence())
 
-        # Assuming goals are not duplicated
+        # Number of goals not satisfied in the current node
         return len(set(self.goal) - set(kb.clauses))
 
 
