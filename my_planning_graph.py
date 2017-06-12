@@ -331,9 +331,7 @@ class PlanningGraph():
             if action.prenodes.issubset(self.s_levels[level]):
                 actions.append(action)
 
-
                 for state in self.s_levels[level]:
-                    # if state in action.prenodes:
                     self.link_states(state, action)
 
         self.a_levels.append(actions)
