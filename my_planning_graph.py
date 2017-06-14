@@ -3,7 +3,7 @@ from aimacode.search import Problem
 from aimacode.utils import expr
 from lp_utils import decode_state
 import itertools
-
+import collections
 
 class PgNode():
     """Base class for planning graph nodes.
@@ -295,15 +295,20 @@ class PlanningGraph():
                 leveled = True
 
     @staticmethod
-    def link_states(state, action):
+    def link_states(states, action):
         """
         Link the actions with the states.
         
-        :param state: A state
+        :param state: A state or array of states
         :param action: The available actions in that state
         """
-        action.parents.add(state)
-        state.children.add(action)
+
+        if not isinstance(states, collections.Iterable):
+            states = [states]
+
+        for state in states:
+            action.parents.add(state)
+            state.children.add(action)
 
     def add_action_level(self, level):
         """ add an A (action) level to the Planning Graph
@@ -330,9 +335,7 @@ class PlanningGraph():
             action = PgNode_a(action)
             if action.prenodes.issubset(self.s_levels[level]):
                 actions.append(action)
-
-                for state in self.s_levels[level]:
-                    self.link_states(state, action)
+                self.link_states(self.s_levels[level], action)
 
         self.a_levels.append(actions)
 
@@ -361,12 +364,9 @@ class PlanningGraph():
         for action in self.a_levels[level - 1]:
             for state in action.effnodes:
                 literals.add(state)
-
-                # Link the state with the action that have produced such effect
                 self.link_states(state, action)
 
         self.s_levels.append(literals)
-
 
     def update_a_mutex(self, nodeset):
         """ Determine and update sibling mutual exclusion for A-level nodes
@@ -528,6 +528,7 @@ class PlanningGraph():
         for p1, p2 in itertools.product(node_s1.parents, node_s2.parents):
             if not p1.is_mutex(p2):
                 return False
+
         return True
 
     def h_levelsum(self) -> int:
@@ -544,7 +545,7 @@ class PlanningGraph():
             for state in states:
                 if state.is_pos and state.symbol in goals:
                     # If the current state is actually a goal, increase level_sum by level_depth and remove the goal
-                    # from the goal set. Since the search is performed from level to level starting by 0, the depth
+                    # from the goal set. Since the search is performed level by level starting by 0, the depth
                     # is going to be minimum.
                     level_sum += level_depth
                     goals.remove(state.symbol)
